@@ -37,16 +37,16 @@
             // 
             // PgBTotal
             // 
-            this.PgBTotal.Location = new System.Drawing.Point(26, 37);
+            this.PgBTotal.Location = new System.Drawing.Point(12, 37);
             this.PgBTotal.Name = "PgBTotal";
-            this.PgBTotal.Size = new System.Drawing.Size(398, 36);
+            this.PgBTotal.Size = new System.Drawing.Size(428, 36);
             this.PgBTotal.TabIndex = 0;
             // 
             // PgBCurrent
             // 
-            this.PgBCurrent.Location = new System.Drawing.Point(26, 119);
+            this.PgBCurrent.Location = new System.Drawing.Point(12, 119);
             this.PgBCurrent.Name = "PgBCurrent";
-            this.PgBCurrent.Size = new System.Drawing.Size(398, 36);
+            this.PgBCurrent.Size = new System.Drawing.Size(428, 36);
             this.PgBCurrent.TabIndex = 1;
             // 
             // label1

@@ -1,0 +1,26 @@
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using WinSCP;
+
+namespace SFTPClient
+{
+    public partial class ProgressForm2 : Form
+    {
+        public ProgressForm2()
+        {
+            InitializeComponent();
+        }
+
+        public void SetValue(double Current)
+        {
+            PgBCurrent.BeginInvoke(new MethodInvoker(delegate () { PgBCurrent.Value = (int)(Current * 100); }));
+        }
+    }
+}

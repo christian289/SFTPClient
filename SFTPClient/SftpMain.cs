@@ -14,45 +14,51 @@ using WinSCP;
 
 namespace SFTPClient
 {
+    /*
+     * 1. Upload, Download 후 대상 경로 Node Update
+     * 2. Upload, Download 시 panel1을 Enable false, true 하는데 TreeView에서 node가 사라지는 것
+     */
     public partial class SftpMain : Form
     {
-        SessionOptions sessionOptions;
-        BindingList<string> LocalSideFilePathBasket { get; set; }
-        BindingList<string> ServerSideFilePathBasket { get; set; }
-        //ProgressForm pForm;
-        string SelectedLocalPath { get; set; }
-        string SelectedServerPath { get; set; }
+        private static ProgressForm pForm { get; set; }
+        private static ProgressForm2 pForm2 { get; set; } 
+
+        private SessionOptions sessionOptions { get; set; }
+        private BindingList<string> LocalSideFilePathBasket { get; set; }
+        private BindingList<string> ServerSideFilePathBasket { get; set; }
+        private string SelectedLocalPath { get; set; }
+        private string SelectedServerPath { get; set; }
 
         public SftpMain()
         {
             InitializeComponent();
+            pForm = new ProgressForm();
+            pForm2 = new ProgressForm2();
 
             LocalSideFilePathBasket = new BindingList<string>();
             ServerSideFilePathBasket = new BindingList<string>();
             LiLocalBasket.DataSource = LocalSideFilePathBasket;
             LiServerBasket.DataSource = ServerSideFilePathBasket;
 
-            //pForm = new ProgressForm();
-
             TreeLocalFileList.AfterSelect += TreeLocalFileList_AfterSelect;
             TreeServerFileList.AfterSelect += TreeServerFileList_AfterSelect;
             BtnConnection.Click += BtnConnection_Click;
-            BtnUpload.Click += (sender, e) => { BgwUpload.RunWorkerAsync(); };
-            BtnDownload.Click += (sender, e) => { BgwDownload.RunWorkerAsync(); };
+            BtnUpload.Click += BtnUpload_Click;
+            BtnDownload.Click += BtnDownload_Click;
             BtnToLocalBasket.Click += BtnToLocalBasket_Click;
             BtnToServerBasket.Click += BtnToServerBasket_Click;
             BtnLocalBasketClear.Click += (sender, e) => LocalSideFilePathBasket.Clear();
             BtnServerBasketClear.Click += (sender, e) => ServerSideFilePathBasket.Clear();
 
             BgwUpload.WorkerReportsProgress = true;
-            BgwUpload.WorkerSupportsCancellation = true;
+            BgwUpload.WorkerSupportsCancellation = false;
             BgwUpload.DoWork += BgwUpload_DoWork;
-            BgwUpload.RunWorkerCompleted += (sender, e) => { LocalSideFilePathBasket.Clear(); };
+            BgwUpload.RunWorkerCompleted += BgwUpload_RunWorkerCompleted;
 
             BgwDownload.WorkerReportsProgress = true;
-            BgwDownload.WorkerSupportsCancellation = true;
+            BgwDownload.WorkerSupportsCancellation = false;
             BgwDownload.DoWork += BgwDownload_DoWork;
-            BgwDownload.RunWorkerCompleted += (sender, e) => { ServerSideFilePathBasket.Clear(); };
+            BgwDownload.RunWorkerCompleted += BgwDownload_RunWorkerCompleted;
 
             BgwChecker.WorkerReportsProgress = false;
             BgwChecker.WorkerSupportsCancellation = false;
@@ -106,18 +112,34 @@ namespace SFTPClient
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void BtnToServerBasket_Click(object sender, EventArgs e)
+        private async void BtnToServerBasket_Click(object sender, EventArgs e)
         {
+            sessionOptions = new SessionOptions
+            {
+                Protocol = Protocol.Sftp,
+                HostName = TxtAddress.Text,
+                UserName = TxtID.Text,
+                Password = TxtPassword.Text,
+                PortNumber = Convert.ToInt32(TxtPort.Text),
+                SshHostKeyFingerprint = "ssh-rsa 1024 YKV2Oy2ygc1MFwaCwYBohn9cPdrJvPg+2U1n0zJ4A6Q=",
+                GiveUpSecurityAndAcceptAnySshHostKey = true
+            };
+
+            panel1.Enabled = false;
+
             using (Session session = new Session())
             {
                 session.Open(sessionOptions);
-                RemoteFileInfo fileInfo = session.GetFileInfo(TreeServerFileList.SelectedNode.Tag.ToString());
+                string TargetFullPath = TreeServerFileList.SelectedNode.Tag.ToString();
+                RemoteFileInfo fileInfo = await Task.Run(() => session.GetFileInfo(TargetFullPath)); // 비동기로 처리한 것에 큰 의미는 없다.
 
                 if (!fileInfo.IsDirectory)
                 {
                     ServerSideFilePathBasket.Add(TreeServerFileList.SelectedNode.Tag.ToString());
                 }
             }
+            
+            panel1.Enabled = true;
         }
 
         /// <summary>
@@ -167,32 +189,27 @@ namespace SFTPClient
             TreeLocalFileList.Nodes.Clear();
             TreeServerFileList.Nodes.Clear();
 
-            try
+            sessionOptions = new SessionOptions
             {
-                sessionOptions = new SessionOptions
-                {
-                    Protocol = Protocol.Sftp,
-                    HostName = TxtAddress.Text,
-                    UserName = TxtID.Text,
-                    Password = TxtPassword.Text,
-                    PortNumber = Convert.ToInt32(TxtPort.Text),
-                    SshHostKeyFingerprint = "ssh-rsa 1024 YKV2Oy2ygc1MFwaCwYBohn9cPdrJvPg+2U1n0zJ4A6Q=",
-                    GiveUpSecurityAndAcceptAnySshHostKey = true
-                };
+                Protocol = Protocol.Sftp,
+                HostName = TxtAddress.Text,
+                UserName = TxtID.Text,
+                Password = TxtPassword.Text,
+                PortNumber = Convert.ToInt32(TxtPort.Text),
+                SshHostKeyFingerprint = "ssh-rsa 1024 YKV2Oy2ygc1MFwaCwYBohn9cPdrJvPg+2U1n0zJ4A6Q=",
+                GiveUpSecurityAndAcceptAnySshHostKey = true
+            };
 
-                using (Session session = new Session())
-                {
-                    session.Open(sessionOptions);
-                    RemoteDirectoryInfo directory = session.ListDirectory(@"/"); // Server에서 Root로 지정된 경로의 상대경로를 지정. 서버의 C:\부터 지정하는게 아님
-                    TreeServerFileList.Nodes.Add(ServerRecuresiveDirectory(session, @"/", @"/")); // 재귀 함수 시작
-                }
-
-                TxtServerCurrentPath.Text = @"/";
-            }
-            catch (Exception ex)
+            using (Session session = new Session())
             {
-                Console.WriteLine(ex.Message);
+                session.Open(sessionOptions);
+                RemoteDirectoryInfo directory = session.ListDirectory(@"/"); // Server에서 Root로 지정된 경로의 상대경로를 지정. 서버의 C:\부터 지정하는게 아님
+                //TreeServerFileList.Nodes.Add(ServerRecuresiveDirectory(session, @"/", @"/")); // 원본
+                TreeServerFileList.Nodes.Add(ServerRecuresiveDirectory(session, directory.Files[0].Name, directory.Files[0].FullName)); // 재귀 함수 시작
+                
             }
+
+            TxtServerCurrentPath.Text = @"/";
 
             DirectoryInfo localDirectoryInfo = new DirectoryInfo(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)); // 내 문서 절대 경로
             TreeLocalFileList.Nodes.Add(LocalRecuresiveDirectory(localDirectoryInfo.FullName, localDirectoryInfo.Name)); // 재귀 함수 시작
@@ -261,6 +278,14 @@ namespace SFTPClient
             return rtnValue;
         }
 
+        private void BtnUpload_Click(object sender, EventArgs e)
+        {
+            //pForm.Show();
+            pForm2.Show();
+            panel1.Enabled = false;
+            BgwUpload.RunWorkerAsync();
+        }
+
         /// <summary>
         /// Upload 버튼 (->)
         /// </summary>
@@ -268,10 +293,20 @@ namespace SFTPClient
         /// <param name="e"></param>
         private void BgwUpload_DoWork(object sender, DoWorkEventArgs e)
         {
+            sessionOptions = new SessionOptions
+            {
+                Protocol = Protocol.Sftp,
+                HostName = TxtAddress.Text,
+                UserName = TxtID.Text,
+                Password = TxtPassword.Text,
+                PortNumber = Convert.ToInt32(TxtPort.Text),
+                SshHostKeyFingerprint = "ssh-rsa 1024 YKV2Oy2ygc1MFwaCwYBohn9cPdrJvPg+2U1n0zJ4A6Q=",
+                GiveUpSecurityAndAcceptAnySshHostKey = true
+            };
+
             using (Session session = new Session())
             {
                 session.FileTransferProgress += SessionFileTransferProgress;
-                //pForm.Show();
 
                 session.Open(sessionOptions);
                 TransferOptions transferOptions = new TransferOptions { TransferMode = TransferMode.Binary };
@@ -294,6 +329,33 @@ namespace SFTPClient
             }
         }
 
+        private void BgwUpload_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            panel1.Enabled = true;
+            LocalSideFilePathBasket.Clear();
+            pForm2.Hide(); // BackgroundWorker 작업이 끝난 시점이라 Main Thread로 이미 작업이 옮겨왔기 때문에 Cross Thread가 발생하지 않는다.
+
+            int selectedNodeLevel = TreeServerFileList.SelectedNode.Level;
+            int selectedNodeIndex = TreeServerFileList.SelectedNode.Index;
+
+            //TreeServerFileList.Nodes.RemoveAt(selectedNodeIndex);
+
+            using (Session session = new Session())
+            {
+                session.Open(sessionOptions);
+                RemoteDirectoryInfo directory = session.ListDirectory(SelectedServerPath);
+                //TreeServerFileList.Nodes.Insert(selectedNodeIndex, ServerRecuresiveDirectory(session, directory.Files[0].Name, directory.Files[0].FullName));
+            }
+        }
+
+        private void BtnDownload_Click(object sender, EventArgs e)
+        {
+            //pForm.Show();
+            pForm2.Show();
+            panel1.Enabled = false;
+            BgwDownload.RunWorkerAsync();
+        }
+
         /// <summary>
         /// Download 버튼 (<-)
         /// </summary>
@@ -301,10 +363,20 @@ namespace SFTPClient
         /// <param name="e"></param>
         private void BgwDownload_DoWork(object sender, DoWorkEventArgs e)
         {
+            sessionOptions = new SessionOptions
+            {
+                Protocol = Protocol.Sftp,
+                HostName = TxtAddress.Text,
+                UserName = TxtID.Text,
+                Password = TxtPassword.Text,
+                PortNumber = Convert.ToInt32(TxtPort.Text),
+                SshHostKeyFingerprint = "ssh-rsa 1024 YKV2Oy2ygc1MFwaCwYBohn9cPdrJvPg+2U1n0zJ4A6Q=",
+                GiveUpSecurityAndAcceptAnySshHostKey = true,
+            };
+
             using (Session session = new Session())
             {
                 session.FileTransferProgress += SessionFileTransferProgress;
-                //pForm.Show();
 
                 session.Open(sessionOptions);
                 TransferOptions transferOptions = new TransferOptions { TransferMode = TransferMode.Binary };
@@ -327,9 +399,24 @@ namespace SFTPClient
             }
         }
 
+        private void BgwDownload_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            panel1.Enabled = true;
+            ServerSideFilePathBasket.Clear();
+            pForm2.Hide(); // BackgroundWorker 작업이 끝난 시점이라 Main Thread로 이미 작업이 옮겨왔기 때문에 Cross Thread가 발생하지 않는다.
+
+            int selectedNodeLevel = TreeLocalFileList.SelectedNode.Level;
+            int selectedNodeIndex = TreeLocalFileList.SelectedNode.Index;
+            //TreeLocalFileList.Nodes.RemoveAt(selectedNodeIndex);
+
+            DirectoryInfo SelectedNodeDirectoryInfo = new DirectoryInfo(SelectedLocalPath);
+            //TreeLocalFileList.Nodes.Insert(selectedNodeIndex, LocalRecuresiveDirectory(SelectedNodeDirectoryInfo.FullName, SelectedNodeDirectoryInfo.Name));
+        }
+
         private void SessionFileTransferProgress(object sender, FileTransferProgressEventArgs e)
         {
-            //pForm.SetValue(Convert.ToInt32(e.OverallProgress), Convert.ToInt32(e.FileProgress));
+            //pForm.SetValue(e.OverallProgress, e.FileProgress);
+            pForm2.SetValue(e.FileProgress);
         }
     }
 }
