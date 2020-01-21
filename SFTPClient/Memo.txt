@@ -1,0 +1,1 @@
+﻿WinSCP를 사용한 SFTP Client를 만들 때는, 우선 WinSCP Client를 다운받아 설치한 후, 서버에 WinSCP로 1회 연결하여 ssh key를 확인하여 코딩할 때 적용해야 한다.
